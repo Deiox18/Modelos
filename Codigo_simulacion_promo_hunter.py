@@ -6,7 +6,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 
 """
 ============================================================
-  PROMO HUNTER — Modelo de Simulación  (versión final)
+  PROMO HUNTER — Modelo de Simulación
   Modelos y Simulación — Tercer Entregable
   Integrantes: Urbano, Ruiz, Arteaga, Sánchez
 ============================================================
@@ -39,8 +39,6 @@ sns.set_theme(style="whitegrid")
 
 # ─────────────────────────────────────────────────────────────
 #  SECCIÓN 1: PARÁMETROS CALIBRADOS
-#  Fuente: sim_tabla_horaria.csv + sim_embudo_completo.json
-#  Periodo: ene-may 2026 (143 días, 21 097 posts)
 # ─────────────────────────────────────────────────────────────
 
 class P:
@@ -54,20 +52,18 @@ class P:
     VISTAS_TOTALES    = 6_613_127
     CLICS_TOTALES     = 96_507
     COMPRAS_TOTALES   = 6_027
-    GANANCIAS_USD     = 3_149.42       # comisiones reales afiliado
-    INGRESOS_USD      = 96_973.87      # revenue total Amazon
+    GANANCIAS_USD     = 3_149.42       
+    INGRESOS_USD      = 96_973.87     
 
-    # ── Embudo — parámetros calibrados ────────────────────────
-    LOGNORM_MU        = 5.726          # LogNormal vistas/post — media log-escala
-    LOGNORM_SIGMA     = 0.201          # LogNormal vistas/post — sd log-escala
-    VISTAS_MEDIA      = 313.3          # E[vistas/post] = exp(mu + sigma²/2)
-    CTR               = 0.014593       # 1.46% — medido: 96507/6613127
-    CR                = 0.0625         # 6.25% — medido: 6027/96507
-    COMISION_UNIT     = 0.52           # USD/compra — $3149.42/6027
-    INGRESO_UNIT      = 16.09          # USD/compra — revenue Amazon
-    TASA_DEVOLUCION   = 0.0169         # 1.69% devolucion
+    LOGNORM_MU        = 5.726          
+    LOGNORM_SIGMA     = 0.201          
+    VISTAS_MEDIA      = 313.3          
+    CTR               = 0.014593       
+    CR                = 0.0625        
+    COMISION_UNIT     = 0.52          
+    INGRESO_UNIT      = 16.09          
+    TASA_DEVOLUCION   = 0.0169         
 
-    # ── CR por tracking ID (11 colaboradores reales) ──────────
     CR_TRACKING = {
         's73f45227-20':     0.0827,
         'elpromohunt0c-20': 0.0747,
@@ -84,7 +80,6 @@ class P:
     CR_MED = sum(CR_TRACKING.values()) / len(CR_TRACKING)
     CR_STD = float(np.std(list(CR_TRACKING.values())))
 
-    # ── Llegada de posts ───────────────────────────────────────
     PUBS_DIA = 147.5                   # media real Poisson (21097/143)
 
     # ── Tabla horaria REAL (sim_tabla_horaria.csv) ─────────────
@@ -111,11 +106,9 @@ class P:
     }
 
     # Factor multiplicador vistas: ratio vs media global (313.3)
-    # Calculado directamente de VISTAS_MEDIA_HORA — sin dict duplicado
     FACTOR_HORA = {h: v / 313.3 for h, v in VISTAS_MEDIA_HORA.items()}
 
     # ── Matriz lambda REAL por (día_semana × hora) ─────────────
-    # dia_num: 0=Lunes … 6=Domingo
     LAMBDA_MATRIZ = {
         0: {0:0.0,   1:0.0,   2:0.0,   3:0.049, 4:0.0,   6:0.049, 7:0.924, 8:4.424,
             9:7.389, 10:9.382,11:10.549,12:10.84,13:10.986,14:10.938,15:10.5,
@@ -140,13 +133,11 @@ class P:
             16:10.792,17:10.597,18:10.694,19:10.743,20:10.5,21:0.681,22:0.194,23:0.0},
     }
 
-    # ── Suscriptores ───────────────────────────────────────────
     SUBS_INICIO      = 4_202
     SUBS_FIN         = 5_690
     TASA_CRECIMIENTO = (5_690 - 4_202) / (4_202 * 143)   # ~0.0025 diaria
     P_VISTA          = 313.3 / 4_946                       # P(vista|pub enviada)
 
-    # ── Categorías de producto ─────────────────────────────────
     CATEGORIAS = {
         'deportes':      {'pct_actual':0.011,'fwd_rate':0.00143,'vistas_media':315.4,'ctr_factor':1.209},
         'hogar':         {'pct_actual':0.163,'fwd_rate':0.00124,'vistas_media':312.6,'ctr_factor':1.048},
@@ -161,7 +152,6 @@ class P:
         'ropa':0.195,'salud/belleza':0.205,'tecnologia':0.155,
     }
 
-    # ── Simulación ─────────────────────────────────────────────
     DIAS_SIM      = 30
     N_SIMS        = 500
     HORARIO_BASE  = list(range(9, 22))       # 9am-9pm (actual)
@@ -290,28 +280,6 @@ class MarkovCanal:
         Bajo:   < $0.1308/post  (peor 25% de días)
         Normal: $0.1308–$0.1614/post  (50% central)
         Alto:   > $0.1614/post  (mejor 25% de días)
-
-    ─── Por qué NO usar los umbrales ⅔/⁴⁄₃ del promedio ─────────
-    Con umbrales $0.0995/$0.1990 el 99.2% de los posts caen en
-    "Normal" al clasificar horas — la cadena perdería toda información.
-    Los umbrales P25/P75 distribuyen los estados de forma equitativa
-    y alinean π con la distribución simulada real.
-
-    ─── Comparación con matriz del compañero ────────────────────
-    La P_MAT del compañero (definida en clase P) da:
-        π = [Bajo=0.293, Normal=0.527, Alto=0.180]
-        P[B→A]=0.000, P[A→B]=0.000  (no permite saltos extremos)
-    Esta cadena calibrada da:
-        π = [Bajo=0.229, Normal=0.551, Alto=0.220]
-        P[B→A]=0.070, P[A→B]=0.070  (saltos extremos simétricos y raros)
-    La matriz calibrada es más realista: permite días excepcionales
-    (viral o muy malo) sin que sean la norma.
-
-    ─── Duración media de rachas ────────────────────────────────
-    E[días en estado i] = 1 / (1 - P[i→i])
-        Bajo:   2.0 días
-        Normal: 2.9 días
-        Alto:   2.0 días
     """
 
     ESTADOS = ['Bajo\n(<$0.131/post)', 'Normal\n($0.131-$0.161/post)', 'Alto\n(>$0.161/post)']
@@ -605,7 +573,6 @@ def plot_dataset_horario(df_csv):
         if v > 500:
             ax2.text(h, v + 10, f"{v:.0f}", ha='center', fontsize=7, color='#2c3e50')
 
-    # ③ Scatter: volumen vs visibilidad (hallazgo clave)
     ax3 = axes[1, 0]
     sc = ax3.scatter(n_p, vm, c=horas, cmap='plasma', s=60, alpha=0.85, zorder=3)
     ax3.set_xlabel("n_posts en la hora (143 días)")
